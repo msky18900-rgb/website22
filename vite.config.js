@@ -3,6 +3,9 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Use the name of your GitHub repository here
+  // Use your EXACT repository name here
   base: '/website22/', 
+  build: {
+    outDir: 'dist',
+  }
 })
