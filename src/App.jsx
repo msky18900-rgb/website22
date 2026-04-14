@@ -7,7 +7,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 
 // --- INSERT YOUR SUPABASE CREDENTIALS HERE ---
-const supabase = createClient('YOUR_URL', 'YOUR_KEY');
+const supabase = createClient('https://cuqwfuxasdnguslqwnql.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1cXdmdXhhc2RuZ3VzbHF3bnFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNjA0MDcsImV4cCI6MjA5MTczNjQwN30.6UrnfqvQ3tWFe_TAqV309Kimo737K9nzWzNqbWH7c9g');
 
 const SECTION_COLORS = [
   { id: 'blue', bg: 'bg-blue-500/20', border: 'border-blue-500', text: 'text-blue-400' },
