@@ -15,15 +15,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          # Removed the cache line that was causing the error
+
       - name: Install dependencies
-        run: npm install
+        # Added a flag to ignore the missing lock file
+        run: npm install --no-package-lock
+
       - name: Build
         run: npm run build
+
       - name: Upload Artifacts
         uses: actions/upload-pages-artifact@v3
         with:
