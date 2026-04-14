@@ -1,11 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  FolderPlus, LayoutGrid, Settings, Trash2, ChevronLeft, 
-  PlayCircle, Loader2, RefreshCcw, MoreVertical, ChevronRight
-} from 'lucide-react';
+import { FolderPlus, LayoutGrid, Trash2, ChevronLeft, PlayCircle, Loader2, ChevronRight } from 'lucide-react';
 
+// Use your verified credentials
 const supabase = createClient(
   "https://cuqwfuxasdnguslqwnql.supabase.co", 
   "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1cXdmdXhhc2RuZ3VzbHF3bnFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNjA0MDcsImV4cCI6MjA5MTczNjQwN30.6UrnfqvQ3tWFe_TAqV309Kimo737K9nzWzNqbWH7c9g"
@@ -16,177 +13,118 @@ export default function App() {
   const [items, setItems] = useState([]);
   const [activeSection, setActiveSection] = useState(null);
   const [loadingId, setLoadingId] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
 
-  useEffect(() => { fetchData(); }, [activeSection]);
+  // 1. Fetch Data whenever activeSection changes
+  useEffect(() => {
+    const fetchData = async () => {
+      // Get sub-folders
+      const { data: sData } = await supabase.from('sections').select('*').eq('parent_section_id', activeSection?.id || null);
+      setSections(sData || []);
 
-  const fetchData = async () => {
-    // Fetch Sub-sections
-    const { data: secData } = await supabase
-      .from('sections')
-      .select('*')
-      .eq('parent_section_id', activeSection?.id || null)
-      .order('created_at', { ascending: false });
-    setSections(secData || []);
+      // Get videos for this folder
+      if (activeSection) {
+        const { data: iData } = await supabase.from('vault_items').select('*').eq('section_id', activeSection.id);
+        setItems(iData || []);
+      }
+    };
+    fetchData();
+  }, [activeSection]);
 
-    // Fetch Lectures
-    if (activeSection) {
-      const { data: itemData } = await supabase
-        .from('vault_items')
-        .select('*')
-        .eq('section_id', activeSection.id)
-        .order('created_at', { ascending: false });
-      setItems(itemData || []);
-    }
-  };
-
-  const handlePlayRequest = async (item) => {
+  // 2. Play / Request Link Logic
+  const handlePlay = async (item) => {
+    // If we already have a link, open it immediately
     if (item.url && item.url !== 'pending_request') {
       window.open(item.url, '_blank');
       return;
     }
+
+    // Otherwise, tell the bot to fetch it
     setLoadingId(item.id);
     await supabase.from('vault_items').update({ request_status: 'pending' }).eq('id', item.id);
-    
-    const interval = setInterval(async () => {
+
+    // Poll for the result
+    const check = setInterval(async () => {
       const { data } = await supabase.from('vault_items').select('url, request_status').eq('id', item.id).single();
       if (data?.request_status === 'completed') {
-        clearInterval(interval);
+        clearInterval(check);
         setLoadingId(null);
         window.open(data.url, '_blank');
-        fetchData();
+        setActiveSection({...activeSection}); // Trigger re-render
       }
     }, 3000);
   };
 
-  const moveLecture = async (itemId, targetSectionId) => {
-    await supabase.from('vault_items').update({ section_id: targetSectionId }).eq('id', itemId);
-    fetchData();
+  // 3. Move Logic
+  const handleMove = async (itemId, targetId) => {
+    if (!targetId) return;
+    const { error } = await supabase.from('vault_items').update({ section_id: targetId }).eq('id', itemId);
+    if (!error) setActiveSection({...activeSection});
   };
 
-  const deleteLecture = async (id) => {
-    if (window.confirm("Delete this lecture?")) {
-      await supabase.from('vault_items').delete().eq('id', id);
-      fetchData();
+  // 4. Delete Logic
+  const handleDelete = async (itemId) => {
+    if (confirm("Delete this?")) {
+      await supabase.from('vault_items').delete().eq('id', itemId);
+      setActiveSection({...activeSection});
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0f1c] text-slate-200">
-      {/* Navbar */}
-      <nav className="p-6 border-b border-white/5 flex justify-between items-center backdrop-blur-md sticky top-0 z-50">
-        <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveSection(null)}>
-          <div className="bg-indigo-600 p-2 rounded-xl text-white"><LayoutGrid size={20} /></div>
-          <span className="text-xl font-black tracking-tighter">STUDY VAULT</span>
-        </div>
-        <button onClick={() => fetchData()} className="p-2 text-slate-500 hover:text-white transition-all">
-          <RefreshCcw size={18} />
-        </button>
-      </nav>
+    <div className="min-h-screen bg-[#0a0f1c] text-white p-6 font-sans">
+      {/* Header / Breadcrumb */}
+      <div className="flex items-center space-x-2 mb-8 text-slate-500 text-sm font-bold">
+        <span className="cursor-pointer hover:text-white" onClick={() => setActiveSection(null)}>HOME</span>
+        {activeSection && <><ChevronRight size={16}/> <span>{activeSection.title}</span></>}
+      </div>
 
-      <main className="max-w-6xl mx-auto p-8">
-        {/* Breadcrumbs */}
-        <div className="flex items-center space-x-2 mb-8 text-sm text-slate-500 font-bold uppercase tracking-widest">
-          <span className="hover:text-white cursor-pointer" onClick={() => setActiveSection(null)}>Root</span>
-          {activeSection && (
-            <>
-              <ChevronRight size={14} />
-              <span className="text-indigo-400">{activeSection.title}</span>
-            </>
-          )}
-        </div>
+      {/* Sections Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+        {sections.map(s => (
+          <div key={s.id} onClick={() => setActiveSection(s)} className="bg-white/5 p-6 rounded-3xl border border-white/10 cursor-pointer hover:bg-indigo-600 transition-all">
+            <FolderPlus className="mb-2" />
+            <div className="font-bold">{s.title}</div>
+          </div>
+        ))}
+        <button onClick={async () => {
+          const t = prompt("Section Name:");
+          if(t) await supabase.from('sections').insert([{ title: t, parent_section_id: activeSection?.id || null }]);
+          setActiveSection(activeSection ? {...activeSection} : null);
+        }} className="border-2 border-dashed border-white/10 rounded-3xl p-6 text-slate-500 hover:text-white">+ New Folder</button>
+      </div>
 
-        {/* Action Header */}
-        <div className="flex justify-between items-end mb-12">
-          <h2 className="text-4xl font-black text-white">{activeSection ? activeSection.title : "Collections"}</h2>
-          <button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-white text-black px-6 py-3 rounded-2xl font-black hover:bg-indigo-600 hover:text-white transition-all"
-          >
-            + New Section
-          </button>
-        </div>
+      {/* Lectures List */}
+      {activeSection && (
+        <div className="space-y-3">
+          <h2 className="text-xl font-black mb-4 underline decoration-indigo-500">Lectures</h2>
+          {items.map(item => (
+            <div key={item.id} className="bg-[#161b2c] p-4 rounded-2xl flex items-center justify-between border border-white/5">
+              <div className="flex-1">
+                <div className="font-bold text-sm">{item.title}</div>
+                <div className="flex space-x-4 mt-2">
+                  {/* MOVE SELECT */}
+                  <select 
+                    onChange={(e) => handleMove(item.id, e.target.value)}
+                    className="bg-transparent text-[10px] text-indigo-400 outline-none cursor-pointer"
+                  >
+                    <option value="">Move To...</option>
+                    {sections.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                  </select>
+                  {/* DELETE BUTTON */}
+                  <button onClick={() => handleDelete(item.id)} className="text-[10px] text-red-500/50 hover:text-red-500">DELETE</button>
+                </div>
+              </div>
 
-        {/* Grid for Sections (Folders) */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {sections.map(sec => (
-            <div 
-              key={sec.id} 
-              onClick={() => setActiveSection(sec)}
-              className="bg-[#161b2c] p-6 rounded-[2rem] border border-white/5 hover:border-indigo-500 transition-all cursor-pointer group"
-            >
-              <FolderPlus className="text-indigo-500 mb-4 group-hover:scale-110 transition-transform" size={32} />
-              <h3 className="text-lg font-bold text-white">{sec.title}</h3>
+              {/* PLAY BUTTON */}
+              <button 
+                onClick={() => handlePlay(item)}
+                className={`p-4 rounded-xl ${loadingId === item.id ? 'bg-amber-500 text-black' : 'bg-indigo-600 text-white'}`}
+              >
+                {loadingId === item.id ? <Loader2 className="animate-spin" size={20}/> : <PlayCircle size={20}/>}
+              </button>
             </div>
           ))}
         </div>
-
-        {/* List for Lectures (Videos) */}
-        {activeSection && (
-          <div className="space-y-4">
-            <h3 className="text-xs font-black text-slate-600 uppercase tracking-[0.2em] mb-4">Lectures in this section</h3>
-            {items.map(item => (
-              <div key={item.id} className="bg-white/5 border border-white/10 p-4 rounded-[2rem] flex items-center justify-between group hover:bg-white/[0.07] transition-all">
-                <div className="flex items-center space-x-4 flex-1">
-                  <div className="w-20 h-12 bg-black rounded-xl overflow-hidden flex-shrink-0">
-                    {item.thumbnail_url && <img src={item.thumbnail_url} className="w-full h-full object-cover" />}
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-white text-sm">{item.title}</h4>
-                    <div className="flex items-center space-x-3 mt-1">
-                      <select 
-                        onChange={(e) => moveLecture(item.id, e.target.value)}
-                        className="bg-transparent text-[10px] text-slate-500 hover:text-indigo-400 outline-none border-none cursor-pointer"
-                      >
-                        <option>Move to...</option>
-                        {sections.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                      </select>
-                      <button onClick={() => deleteLecture(item.id)} className="text-[10px] text-red-500/40 hover:text-red-500 font-bold uppercase">Delete</button>
-                    </div>
-                  </div>
-                </div>
-
-                <button 
-                  onClick={() => handlePlayRequest(item)}
-                  className={`p-4 rounded-2xl transition-all ${loadingId === item.id ? 'bg-amber-500/20 text-amber-500' : 'bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600 hover:text-white'}`}
-                >
-                  {loadingId === item.id ? <Loader2 className="animate-spin" size={20} /> : <PlayCircle size={20} />}
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
-
-      {/* New Section Modal */}
-      <AnimatePresence>
-        {isModalOpen && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-6">
-            <div className="bg-[#161b2c] p-8 rounded-[3rem] w-full max-w-sm border border-white/10">
-              <h2 className="text-2xl font-black mb-6 text-white text-center">New Section</h2>
-              <input 
-                placeholder="Title" 
-                className="w-full bg-black/50 p-4 rounded-xl border border-white/10 mb-6 text-white outline-none"
-                value={newTitle}
-                onChange={e => setNewTitle(e.target.value)}
-              />
-              <div className="flex gap-4">
-                <button onClick={() => setIsModalOpen(false)} className="flex-1 font-bold text-slate-500">Cancel</button>
-                <button 
-                  onClick={async () => {
-                    await supabase.from('sections').insert([{ title: newTitle, parent_section_id: activeSection?.id || null }]);
-                    setIsModalOpen(false); setNewTitle(''); fetchData();
-                  }}
-                  className="flex-1 bg-white text-black p-4 rounded-2xl font-black"
-                >
-                  Create
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </AnimatePresence>
+      )}
     </div>
   );
 }
