@@ -1,121 +1,187 @@
 import React, { useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { DndContext, closestCenter, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
-import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Folder, PlayCircle, Inbox, GraduationCap, LayoutGrid, ExternalLink } from 'lucide-react';
+import { 
+  Plus, Trash2, FolderPlus, GripVertical, 
+  CheckCircle2, Circle, ArrowRight, Palette 
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 
-const supabase = createClient('https://cuqwfuxasdnguslqwnql.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN1cXdmdXhhc2RuZ3VzbHF3bnFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYxNjA0MDcsImV4cCI6MjA5MTczNjQwN30.6UrnfqvQ3tWFe_TAqV309Kimo737K9nzWzNqbWH7c9g');
+// --- INSERT YOUR SUPABASE CREDENTIALS HERE ---
+const supabase = createClient('YOUR_URL', 'YOUR_KEY');
+
+const SECTION_COLORS = [
+  { id: 'blue', bg: 'bg-blue-500/20', border: 'border-blue-500', text: 'text-blue-400' },
+  { id: 'purple', bg: 'bg-purple-500/20', border: 'border-purple-500', text: 'text-purple-400' },
+  { id: 'green', bg: 'bg-emerald-500/20', border: 'border-emerald-500', text: 'text-emerald-400' },
+  { id: 'orange', bg: 'bg-orange-500/20', border: 'border-orange-500', text: 'text-orange-400' },
+  { id: 'pink', bg: 'bg-pink-500/20', border: 'border-pink-500', text: 'text-pink-400' },
+];
 
 export default function App() {
   const [lectures, setLectures] = useState([]);
-  const sensors = useSensors(useSensor(PointerSensor));
+  const [sections, setSections] = useState([
+    { id: 'inbox', title: 'New Arrivals', color: 'blue' }
+  ]);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [isAddingSection, setIsAddingSection] = useState(false);
+  const [newSectionTitle, setNewSectionTitle] = useState('');
 
   useEffect(() => {
-    fetchLectures();
-    // Real-time subscription: Updates site instantly when Telegram bot adds data
-    const subscription = supabase
-      .channel('lectures_channel')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'lectures' }, fetchLectures)
-      .subscribe();
-    return () => supabase.removeChannel(subscription);
+    fetchData();
   }, []);
 
-  async function fetchLectures() {
-    const { data } = await supabase.from('lectures').select('*').order('created_at', { ascending: false });
-    if (data) setLectures(data);
+  async function fetchData() {
+    const { data: lects } = await supabase.from('lectures').select('*');
+    // In a real app, you'd fetch sections from a 'sections' table too.
+    // For now, let's derive them or use local state.
+    if (lects) setLectures(lects);
   }
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
-    if (!over) return;
+  const addSection = () => {
+    if (!newSectionTitle) return;
+    const newSec = {
+      id: newSectionTitle.toLowerCase().replace(/\s+/g, '-'),
+      title: newSectionTitle,
+      color: SECTION_COLORS[sections.length % SECTION_COLORS.length].id
+    };
+    setSections([...sections, newSec]);
+    setNewSectionTitle('');
+    setIsAddingSection(false);
+  };
 
-    const lectureId = active.id;
-    const overId = over.id;
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
+  };
 
-    // Logic to update section_id in database when dropped into a folder
-    if (overId !== 'inbox' && overId !== lectureId) {
-      await supabase.from('lectures').update({ section_id: overId }).eq('id', lectureId);
-      fetchLectures();
+  const bulkMove = async (targetSectionId) => {
+    if (selectedIds.length === 0) return;
+    
+    const { error } = await supabase
+      .from('lectures')
+      .update({ section_id: targetSectionId })
+      .in('id', selectedIds);
+
+    if (!error) {
+      setLectures(prev => prev.map(l => 
+        selectedIds.includes(l.id) ? { ...l, section_id: targetSectionId } : l
+      ));
+      setSelectedIds([]);
     }
   };
 
-  const sections = [...new Set(lectures.filter(l => l.section_id !== 'inbox').map(l => l.section_id))];
-
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans pb-20">
+    <div className="min-h-screen bg-[#0f1115] text-slate-200 p-6 font-sans">
       {/* Header */}
-      <nav className="border-b border-slate-800 bg-slate-900/50 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="bg-blue-600 p-2 rounded-lg"><GraduationCap size={24} className="text-white"/></div>
-            <h1 className="text-xl font-bold tracking-tight">Vault<span className="text-blue-500">Study</span></h1>
-          </div>
-          <div className="text-xs bg-slate-800 px-3 py-1 rounded-full border border-slate-700 text-slate-400">
-            Auto-Sync Active
-          </div>
+      <div className="flex justify-between items-center mb-8 max-w-7xl mx-auto">
+        <div>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+            Study Vault
+          </h1>
+          <p className="text-slate-500 text-sm">Organize your learning path</p>
         </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto px-6 mt-10 grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        
+        <div className="flex gap-3">
+          {selectedIds.length > 0 && (
+            <div className="flex items-center gap-2 bg-slate-800 px-4 py-2 rounded-lg border border-slate-700 animate-in fade-in zoom-in">
+              <span className="text-sm font-medium text-blue-400">{selectedIds.length} selected</span>
+              <div className="h-4 w-[1px] bg-slate-700 mx-2" />
+              <select 
+                className="bg-transparent text-sm outline-none cursor-pointer"
+                onChange={(e) => bulkMove(e.target.value)}
+                defaultValue=""
+              >
+                <option value="" disabled>Move to...</option>
+                {sections.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+              </select>
+            </div>
+          )}
           
-          {/* LEFT: Common Area (Inbox) */}
-          <div className="lg:col-span-4">
-            <div className="bg-slate-900/40 border border-slate-800 rounded-2xl p-6 backdrop-blur-sm sticky top-24">
-              <div className="flex items-center gap-2 mb-6 text-blue-400">
-                <Inbox size={20} />
-                <h2 className="font-semibold uppercase tracking-wider text-sm">New Arrivals</h2>
+          <button 
+            onClick={() => setIsAddingSection(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 transition-colors px-4 py-2 rounded-lg font-medium"
+          >
+            <FolderPlus size={18} /> Add Section
+          </button>
+        </div>
+      </div>
+
+      {/* Board Layout */}
+      <div className="flex gap-6 overflow-x-auto pb-6">
+        {sections.map((section) => {
+          const color = SECTION_COLORS.find(c => c.id === section.color);
+          const sectionLectures = lectures.filter(l => l.section_id === section.id);
+
+          return (
+            <div key={section.id} className="min-w-[320px] w-[320px] flex flex-col gap-4">
+              <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                  <div className={`w-2 h-2 rounded-full ${color.border} bg-current`} />
+                  <h3 className="font-semibold text-slate-300">{section.title}</h3>
+                  <span className="bg-slate-800 text-slate-500 text-xs px-2 py-0.5 rounded-full">
+                    {sectionLectures.length}
+                  </span>
+                </div>
               </div>
-              <div className="space-y-3">
-                {lectures.filter(l => l.section_id === 'inbox').map(lec => (
-                   <div key={lec.id} className="p-4 bg-slate-800/50 border border-slate-700 rounded-xl hover:border-blue-500/50 transition-all cursor-grab active:cursor-grabbing">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="text-xs text-blue-400 font-mono">NEW</span>
-                        <a href={lec.link} target="_blank" className="text-slate-500 hover:text-white"><ExternalLink size={14}/></a>
+
+              <div className={`flex-1 min-h-[500px] rounded-xl border-2 border-dashed border-transparent hover:border-slate-800 transition-all p-2 bg-slate-900/30`}>
+                <AnimatePresence>
+                  {sectionLectures.map((lecture) => (
+                    <motion.div
+                      layout
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      key={lecture.id}
+                      onClick={() => toggleSelect(lecture.id)}
+                      className={`group relative mb-3 p-4 rounded-xl border cursor-pointer transition-all active:scale-95 ${
+                        selectedIds.includes(lecture.id) 
+                          ? 'bg-blue-600/20 border-blue-500' 
+                          : 'bg-slate-800/50 border-slate-700 hover:border-slate-500'
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1">
+                          {selectedIds.includes(lecture.id) 
+                            ? <CheckCircle2 size={18} className="text-blue-400" />
+                            : <Circle size={18} className="text-slate-600 group-hover:text-slate-400" />
+                          }
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium leading-tight mb-1">{lecture.title}</p>
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider">
+                            {new URL(lecture.link).hostname.replace('www.', '')}
+                          </p>
+                        </div>
+                        <GripVertical size={16} className="text-slate-700 opacity-0 group-hover:opacity-100 transition-opacity" />
                       </div>
-                      <p className="text-sm font-medium leading-snug">{lec.title}</p>
-                   </div>
-                ))}
-                {lectures.filter(l => l.section_id === 'inbox').length === 0 && (
-                  <p className="text-slate-500 text-center text-sm py-10">No new links. Post in Telegram!</p>
-                )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             </div>
-          </div>
+          );
+        })}
 
-          {/* RIGHT: Organized Sections */}
-          <div className="lg:col-span-8 space-y-6">
-             <div className="flex items-center gap-2 mb-4 text-slate-400">
-                <LayoutGrid size={20} />
-                <h2 className="font-semibold uppercase tracking-wider text-sm">Your Library</h2>
-             </div>
-             
-             {sections.length > 0 ? sections.map(sectionName => (
-               <div key={sectionName} className="bg-slate-900/20 border border-slate-800 rounded-2xl p-6 shadow-xl">
-                  <div className="flex items-center gap-3 mb-6">
-                    <Folder className="text-amber-500" size={22} />
-                    <h3 className="text-lg font-bold">{sectionName}</h3>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {lectures.filter(l => l.section_id === sectionName).map(lec => (
-                      <a key={lec.id} href={lec.link} target="_blank" className="group p-4 bg-slate-800/30 border border-slate-700/50 rounded-xl flex items-center gap-4 hover:bg-slate-800 transition-all">
-                        <div className="bg-blue-600/20 p-2 rounded-lg text-blue-500 group-hover:scale-110 transition-transform">
-                          <PlayCircle size={24} />
-                        </div>
-                        <span className="text-sm font-medium line-clamp-1">{lec.title}</span>
-                      </a>
-                    ))}
-                  </div>
-               </div>
-             )) : (
-               <div className="text-center py-20 border-2 border-dashed border-slate-800 rounded-3xl">
-                 <p className="text-slate-500 italic">Drag lectures here to create your first folder</p>
-               </div>
-             )}
+        {/* New Section Modal Trigger */}
+        {isAddingSection && (
+          <div className="min-w-[320px] p-4 rounded-xl bg-slate-900/50 border border-slate-800 h-fit">
+            <input 
+              autoFocus
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm mb-3 focus:border-blue-500 outline-none"
+              placeholder="Section Name (e.g. Mathematics)"
+              value={newSectionTitle}
+              onChange={(e) => setNewSectionTitle(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && addSection()}
+            />
+            <div className="flex gap-2">
+              <button onClick={addSection} className="flex-1 bg-blue-600 text-xs py-2 rounded-lg">Create</button>
+              <button onClick={() => setIsAddingSection(false)} className="flex-1 bg-slate-700 text-xs py-2 rounded-lg">Cancel</button>
+            </div>
           </div>
-
-        </DndContext>
-      </main>
+        )}
+      </div>
     </div>
   );
 }
