@@ -22,25 +22,5 @@ jobs:
           node-version: 20
           # Removed the cache line that was causing the error
 
-      - name: Install dependencies
-        # Added a flag to ignore the missing lock file
-        run: npm install --no-package-lock
-
-      - name: Build
-        run: npm run build
-
-      - name: Upload Artifacts
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: dist
-
-  deploy:
-    needs: build_site
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
         id: deployment
         uses: actions/deploy-pages@v4
